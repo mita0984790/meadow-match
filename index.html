@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#315c46">
+  <meta name="description" content="咩咩牧场是一款轻松有趣的免费网页消除游戏。点击叠层纸牌，将三个相同图案放进收集槽即可消除，无需下载，打开即玩。">
+  <meta name="keywords" content="消除游戏,网页小游戏,休闲游戏,羊了个羊类似游戏,咩咩牧场">
+  <meta property="og:title" content="咩咩牧场｜轻松的三消叠层游戏">
+  <meta property="og:description" content="清空牧场里的所有纸牌，挑战你的观察力和卡槽管理。">
+  <meta property="og:type" content="website">
+  <title>咩咩牧场｜免费网页消除游戏</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="game.js" defer></script>
+</head>
+<body>
+  <svg class="svg-sprite" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <symbol id="logo-sheep" viewBox="0 0 64 64">
+        <path d="M17 20c-5-4-4-11 1-13 4-2 8 1 10 5 3-4 10-4 13 0 5-2 11 1 11 7 5 2 7 8 4 12 4 5 1 12-4 13-1 7-7 12-13 11-5 4-13 2-15-3-7 1-13-5-11-11-5-3-5-11 0-14-2-3 0-6 4-7Z" fill="#fff9e9"/>
+        <path d="M20 30c-7-5-12-2-11 3 1 4 6 6 11 5m24-8c7-5 12-2 11 3-1 4-6 6-11 5" fill="#e7b989"/>
+        <rect x="19" y="24" width="26" height="27" rx="12" fill="#f3cfa4"/>
+        <path d="M24 25c1-6 6-8 9-4 4-4 10-1 9 5" fill="#fff9e9"/>
+        <circle cx="27" cy="35" r="1.8" fill="#315c46"/><circle cx="38" cy="35" r="1.8" fill="#315c46"/>
+        <path d="M30 42c2 2 4 2 6 0M32 39v3" fill="none" stroke="#9b684c" stroke-width="1.8" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="icon-help" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M9.7 9a2.4 2.4 0 0 1 4.6 1c0 2-2.3 2.1-2.3 4M12 17.2v.1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+      <symbol id="icon-volume" viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6L8 10H4Zm12-1c1.7 1.7 1.7 4.3 0 6m2.5-8.5c3 3 3 8 0 11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="icon-mute" viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6L8 10H4Zm12-1 5 6m0-6-5 6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="icon-restart" viewBox="0 0 24 24"><path d="M5 8V4m0 0h4M5 4l3 3a7 7 0 1 1-2 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="icon-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M12 7v5l3 2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+      <symbol id="icon-star" viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z" fill="currentColor"/></symbol>
+      <symbol id="icon-undo" viewBox="0 0 24 24"><path d="m8 7-4 4 4 4m-4-4h9a6 6 0 0 1 6 6v1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="icon-shuffle" viewBox="0 0 24 24"><path d="M4 7h2c4 0 5 10 9 10h5m-3-3 3 3-3 3M4 17h2c1.7 0 2.8-1.8 4-4m3-3c.8-1.7 1.6-3 3-3h4m-3-3 3 3-3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="icon-extract" viewBox="0 0 24 24"><path d="M7 14H4V4h10v3m-3 3h9v10H11V10Zm-4-3 4 4m0-4-4 4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="icon-trophy" viewBox="0 0 48 48"><path d="M15 8h18v11c0 8-4 13-9 13s-9-5-9-13V8Z" fill="#f2bd4f"/><path d="M15 12H8v4c0 5 3 8 8 8m17-12h7v4c0 5-3 8-8 8M24 32v7m-7 3h14" fill="none" stroke="#b87a28" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="m24 13 1.8 3.6 4 .6-2.9 2.8.7 4-3.6-1.9-3.6 1.9.7-4-2.9-2.8 4-.6L24 13Z" fill="#fff4c8"/></symbol>
+      <symbol id="tile-carrot" viewBox="0 0 48 48"><path d="M25 15c-3-7 1-11 4-11 1 5 0 9-3 12m-3 0c-1-7-6-9-9-7 2 5 5 7 9 8" fill="#65a75b"/><path d="M13 17c2-5 15-6 20-1 4 5-11 25-16 26-5 0-7-20-4-25Z" fill="#ed9455"/><path d="m15 24 6 1m-4 7 5 1m3-12 5 1" stroke="#c96d3f" stroke-width="2" stroke-linecap="round"/></symbol>
+      <symbol id="tile-clover" viewBox="0 0 48 48"><path d="M24 25c-9 3-17-1-16-8 1-6 8-7 13-3-2-7 3-12 9-9 5 2 5 9 1 14 8-2 13 3 11 9-2 7-11 6-17 1" fill="#70ad63"/><path d="M25 25c1 8-1 13-6 17" fill="none" stroke="#3f7c4d" stroke-width="3" stroke-linecap="round"/><path d="M19 14c4 2 7 5 7 11m7-6c-4 1-7 3-8 7" fill="none" stroke="#a8cf82" stroke-width="2" stroke-linecap="round"/></symbol>
+      <symbol id="tile-bell" viewBox="0 0 48 48"><path d="M14 32h22c-4-4-3-9-4-15-1-5-4-8-8-8s-7 3-8 8c-1 6 0 11-2 15Z" fill="#efbd52"/><path d="M12 33h26M21 37c1 5 7 5 8 0" fill="none" stroke="#b77b2e" stroke-width="2.5" stroke-linecap="round"/><path d="M20 14c-2 3-2 7-2 10" fill="none" stroke="#ffe69b" stroke-width="3" stroke-linecap="round"/></symbol>
+      <symbol id="tile-apple" viewBox="0 0 48 48"><path d="M25 14c-1-6 3-10 8-10-1 5-3 9-8 10" fill="#659c50"/><path d="M24 15c-8-5-16 0-16 10 0 11 8 18 14 15 2-1 3-1 5 0 7 3 14-5 14-15 0-10-9-15-17-10Z" fill="#df7164"/><path d="M14 21c1-3 3-5 6-5" fill="none" stroke="#f5aaa0" stroke-width="3" stroke-linecap="round"/><path d="M24 15c0-5-1-7-3-9" fill="none" stroke="#76563d" stroke-width="2.5" stroke-linecap="round"/></symbol>
+      <symbol id="tile-flower" viewBox="0 0 48 48"><path d="M24 20c-8-1-12-7-9-12 3-4 8-1 10 4 3-6 9-7 12-3 3 5-1 10-7 11 7 2 9 8 5 12-4 3-9 0-11-5-3 6-10 7-13 2-2-5 3-10 13-9Z" fill="#ae91c7"/><circle cx="25" cy="21" r="6" fill="#f2c55f"/><path d="M25 28v14m0-7c-5-4-9-2-10 1 4 3 7 3 10 1" fill="none" stroke="#629555" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+      <symbol id="tile-milk" viewBox="0 0 48 48"><path d="M18 5h13v8l4 6v22H14V19l4-6V5Z" fill="#f8f4e9" stroke="#82aeb7" stroke-width="2" stroke-linejoin="round"/><path d="M18 10h13M14 24h21" fill="none" stroke="#82aeb7" stroke-width="2"/><path d="M17 25h15v13H17z" fill="#a8d2d4"/><path d="M22 28c-4 4-3 7 0 7s5-4 3-7c-1-1-2-2-3-4-1 2-1 3 0 4Z" fill="#fff" transform="translate(2 0)"/></symbol>
+      <symbol id="tile-yarn" viewBox="0 0 48 48"><circle cx="23" cy="25" r="16" fill="#d79aaa"/><path d="M11 16c9-1 18 5 23 14M9 25c8-3 19 2 25 9M16 11c-1 9 5 21 14 27M27 10c-8 6-12 16-10 25m18-13c-8 0-15 5-18 12" fill="none" stroke="#b9758c" stroke-width="2" stroke-linecap="round"/><path d="M34 37c5 1 7 3 8 6" fill="none" stroke="#b9758c" stroke-width="2" stroke-linecap="round"/></symbol>
+      <symbol id="tile-corn" viewBox="0 0 48 48"><path d="M24 7c9 0 12 10 9 20-2 9-7 14-11 13-7-1-10-12-7-21C17 11 20 7 24 7Z" fill="#efc654"/><path d="M18 15c4 1 9 1 14 0m-16 7c6 2 12 2 18 0m-16 7c5 2 10 2 14 0M21 9c-1 10 0 20 3 29m5-28c2 8 1 17-2 27" fill="none" stroke="#d6a743" stroke-width="1.5"/><path d="M15 20c-6 6-5 15 7 22-3-8-2-15 1-20m10-2c7 5 7 13-7 22 4-8 4-14 1-20" fill="#72a75d"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="ambient ambient-one" aria-hidden="true"></div>
+  <div class="ambient ambient-two" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="咩咩牧场首页">
+      <span class="brand-mark"><svg><use href="#logo-sheep"></use></svg></span>
+      <span class="brand-copy"><strong>咩咩牧场</strong><small>MEADOW MATCH</small></span>
+    </a>
+    <div class="header-actions">
+      <button class="icon-button" id="soundButton" type="button" aria-label="关闭声音" title="声音">
+        <svg class="icon"><use id="soundIcon" href="#icon-volume"></use></svg>
+      </button>
+      <button class="help-button" id="helpButton" type="button">
+        <svg class="icon"><use href="#icon-help"></use></svg><span>玩法说明</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="game-shell">
+    <section class="game-panel" aria-label="咩咩牧场游戏区">
+      <div class="game-heading">
+        <div class="level-copy">
+          <div class="eyebrow"><span class="live-dot"></span>每日轻松挑战</div>
+          <h1 id="levelTitle">青草坡 · 第 1 关</h1>
+        </div>
+        <div class="heading-actions">
+          <div class="mini-stat"><span>分数</span><strong id="scoreValue">0</strong></div>
+          <div class="mini-stat"><span>用时</span><strong id="timeValue">00:00</strong></div>
+          <button class="restart-button" id="restartButton" type="button" aria-label="重新开始本关" title="重新开始">
+            <svg class="icon"><use href="#icon-restart"></use></svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="progress-row">
+        <span id="progressText">剩余 66 张纸牌</span>
+        <div class="progress-track" aria-hidden="true"><span id="progressBar"></span></div>
+        <span id="moveText">0 步</span>
+      </div>
+
+      <div class="board-frame">
+        <div class="board" id="board" role="group" aria-label="叠层纸牌区域"></div>
+        <div class="board-caption" id="boardCaption"><span></span>点选没有被压住的纸牌</div>
+        <div class="game-overlay" id="gameOverlay" hidden>
+          <div class="overlay-card">
+            <div class="result-icon" id="resultIcon"><svg><use href="#icon-trophy"></use></svg></div>
+            <span class="overlay-kicker" id="overlayKicker">挑战完成</span>
+            <h2 id="overlayTitle">牧场焕然一新！</h2>
+            <p id="overlayDescription">你清空了所有纸牌，小羊为你欢呼。</p>
+            <div class="result-stats">
+              <div><strong id="resultScore">0</strong><span>本局分数</span></div>
+              <div><strong id="resultTime">00:00</strong><span>完成用时</span></div>
+            </div>
+            <button class="primary-button" id="overlayPrimary" type="button">前往下一关</button>
+            <button class="text-button" id="overlaySecondary" type="button">再玩一次</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="tray-section">
+        <div class="tray-heading">
+          <div><strong>收集槽</strong><span>三个相同图案自动消除</span></div>
+          <span class="tray-count" id="trayCount">0 / 7</span>
+        </div>
+        <div class="tray" id="tray" role="group" aria-label="七格收集槽"></div>
+        <div class="holding-row" id="holdingRow" hidden>
+          <span>暂存区 <small>点击纸牌放回</small></span>
+          <div class="holding-slots" id="holdingSlots"></div>
+        </div>
+      </div>
+
+      <div class="tools" aria-label="游戏道具">
+        <button class="tool-button" id="undoButton" type="button">
+          <span class="tool-icon undo"><svg class="icon"><use href="#icon-undo"></use></svg></span>
+          <span><strong>撤销一步</strong><small>放回上次选的牌</small></span>
+          <b id="undoCount">3</b>
+        </button>
+        <button class="tool-button" id="shuffleButton" type="button">
+          <span class="tool-icon shuffle"><svg class="icon"><use href="#icon-shuffle"></use></svg></span>
+          <span><strong>洗牌</strong><small>重排剩余图案</small></span>
+          <b id="shuffleCount">2</b>
+        </button>
+        <button class="tool-button" id="extractButton" type="button">
+          <span class="tool-icon extract"><svg class="icon"><use href="#icon-extract"></use></svg></span>
+          <span><strong>移出纸牌</strong><small>暂存三张槽内牌</small></span>
+          <b id="extractCount">2</b>
+        </button>
+      </div>
+    </section>
+
+    <aside class="sidebar" aria-label="挑战信息">
+      <section class="side-card progress-card">
+        <div class="side-card-heading"><span>本局进度</span><span class="soft-badge">第 <b id="sideLevel">1</b> 关</span></div>
+        <div class="progress-ring" id="progressRing" style="--progress: 0deg">
+          <div><strong id="clearedValue">0</strong><span>/ 66 已移出</span></div>
+        </div>
+        <p id="progressHint">从顶层开始，慢慢清理牧场吧</p>
+      </section>
+
+      <section class="side-card record-card">
+        <div class="side-card-heading"><span>牧场记录</span><svg class="icon"><use href="#icon-star"></use></svg></div>
+        <div class="record-row"><span>历史最佳</span><strong id="bestScore">—</strong></div>
+        <div class="record-row"><span>成功通关</span><strong><b id="winCount">0</b> 次</strong></div>
+        <small>记录仅保存在当前浏览器</small>
+      </section>
+
+      <section class="side-card tip-card">
+        <div class="tip-label"><span></span>牧场小贴士</div>
+        <p id="tipText">优先拿走压住更多纸牌的顶层牌，会让后面的选择更多。</p>
+        <button id="tipHelpButton" type="button">查看完整玩法 <span>→</span></button>
+      </section>
+    </aside>
+  </main>
+
+  <footer class="site-footer">原创网页小游戏<span>·</span>无需下载<span>·</span>打开即玩</footer>
+
+  <div class="modal" id="helpModal" hidden>
+    <div class="modal-backdrop" data-close-modal></div>
+    <section class="help-dialog" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+      <button class="modal-close" id="closeHelpButton" type="button" aria-label="关闭玩法说明">×</button>
+      <span class="dialog-kicker">新手指南</span>
+      <h2 id="helpTitle">三步成为牧场高手</h2>
+      <p class="dialog-intro">规则很简单，但每一步都要为卡槽留点余地。</p>
+      <ol class="how-to-list">
+        <li><span>1</span><div><strong>选择可用的纸牌</strong><p>只有没有被其他纸牌压住的牌才能点击，亮色纸牌就是当前可选项。</p></div></li>
+        <li><span>2</span><div><strong>凑齐三个相同图案</strong><p>纸牌会进入下方收集槽，三个相同图案自动消除。槽满七格且无法消除时，挑战失败。</p></div></li>
+        <li><span>3</span><div><strong>灵活使用三个道具</strong><p>撤销可以回退一步；洗牌会重排场上图案；移出可将最多三张牌放进暂存区，再点击暂存牌放回。</p></div></li>
+      </ol>
+      <button class="primary-button" id="startPlayingButton" type="button">知道了，开始挑战</button>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

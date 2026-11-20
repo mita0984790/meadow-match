@@ -44,6 +44,8 @@
   let toastTimer = null;
   let modalShouldResume = false;
   let previousFocus = null;
+  const boardNodes = new Map();
+  const pendingPicks = [];
   let state;
 
   function loadRecords() {
@@ -165,6 +167,7 @@
   function newGame(level = 1) {
     if (state?.timer) clearInterval(state.timer);
     state = createState(level);
+    pendingPicks.length = 0;
     dom.overlay.hidden = true;
     renderAll();
     updateTime();
@@ -220,27 +223,81 @@
     return `<svg class="tile-icon" aria-hidden="true"><use href="#tile-${type.id}"></use></svg><span class="tile-label">${type.name}</span>`;
   }
 
+  function createTileNode(tile) {
+    const node = document.createElement('button');
+    node.type = 'button';
+    node.className = 'tile';
+    node.dataset.tileId = tile.id;
+    node.style.left = `${tile.x / BOARD_WIDTH * 100}%`;
+    node.style.top = `${tile.y / BOARD_HEIGHT * 100}%`;
+    node.style.zIndex = `${tile.layer * 100 + Math.round(tile.y)}`;
+    const face = document.createElement('span');
+    face.className = 'tile-face';
+    node.appendChild(face);
+    return node;
+  }
+
+  // 增量更新棋盘：复用已有节点，避免重建 DOM 时丢掉正在进行的点击。
   function renderBoard() {
-    const inactive = state.locked || state.status === 'won' || state.status === 'lost';
-    dom.board.innerHTML = state.tiles.filter((tile) => !tile.removed).map((tile) => {
+    const seen = new Set();
+
+    state.tiles.forEach((tile) => {
+      if (tile.removed) return;
+      seen.add(tile.id);
+
+      let node = boardNodes.get(tile.id);
+      if (!node) {
+        node = createTileNode(tile);
+        boardNodes.set(tile.id, node);
+        dom.board.appendChild(node);
+      }
+
       const blocked = isBlocked(tile);
       const type = tileType(tile);
-      const left = tile.x / BOARD_WIDTH * 100;
-      const top = tile.y / BOARD_HEIGHT * 100;
-      const zIndex = tile.layer * 100 + Math.round(tile.y);
-      return `<button type="button" class="tile${blocked ? ' is-blocked' : ''}" data-tile-id="${tile.id}" style="left:${left}%;top:${top}%;z-index:${zIndex}" ${blocked || inactive ? 'disabled' : ''} aria-label="${type.name}，${blocked ? '被其他纸牌压住' : '可以选择'}"><span class="tile-face">${tileContents(tile)}</span></button>`;
-    }).join('');
+      node.classList.toggle('is-blocked', blocked);
+      node.disabled = blocked;
+      node.setAttribute('aria-label', `${type.name}，${blocked ? '被其他纸牌压住' : '可以选择'}`);
+
+      if (node.dataset.type !== type.id) {
+        node.dataset.type = type.id;
+        node.firstChild.innerHTML = tileContents(tile);
+      }
+    });
+
+    boardNodes.forEach((node, id) => {
+      if (seen.has(id)) return;
+      node.remove();
+      boardNodes.delete(id);
+    });
   }
 
   function renderTray() {
     const tileMap = new Map(state.tiles.map((tile) => [tile.id, tile]));
-    dom.tray.innerHTML = Array.from({ length: TRAY_CAPACITY }, (_, index) => {
+
+    if (dom.tray.children.length !== TRAY_CAPACITY) {
+      dom.tray.innerHTML = '<div class="tray-slot" aria-hidden="true"></div>'.repeat(TRAY_CAPACITY);
+    }
+
+    Array.from(dom.tray.children).forEach((slot, index) => {
       const id = state.tray[index];
-      if (!id) return '<div class="tray-slot" aria-hidden="true"></div>';
-      const tile = tileMap.get(id);
-      const matching = state.matching.includes(id);
-      return `<div class="tray-slot has-tile${matching ? ' is-matching' : ''}" aria-label="${tileType(tile).name}">${tileContents(tile)}</div>`;
-    }).join('');
+      const matching = Boolean(id) && state.matching.includes(id);
+      const signature = id ? `${id}|${matching ? 'match' : ''}` : '';
+      if (slot.dataset.signature === signature) return;
+      slot.dataset.signature = signature;
+
+      slot.classList.toggle('has-tile', Boolean(id));
+      slot.classList.toggle('is-matching', matching);
+
+      if (id) {
+        slot.setAttribute('aria-label', tileType(tileMap.get(id)).name);
+        slot.removeAttribute('aria-hidden');
+        slot.innerHTML = tileContents(tileMap.get(id));
+      } else {
+        slot.removeAttribute('aria-label');
+        slot.setAttribute('aria-hidden', 'true');
+        slot.innerHTML = '';
+      }
+    });
   }
 
   function renderHeld() {
@@ -343,7 +400,12 @@
   }
 
   function selectBoardTile(id) {
-    if (state.locked || ['won', 'lost'].includes(state.status)) return;
+    if (['won', 'lost'].includes(state.status)) return;
+    if (state.locked) {
+      // 消除动画期间先记录点击，动画结束后立即处理，避免连点被丢弃。
+      if (pendingPicks.length < 3) pendingPicks.push(id);
+      return;
+    }
     const tile = state.tiles.find((item) => item.id === id);
     if (!tile || tile.removed || isBlocked(tile)) return;
 
@@ -353,6 +415,13 @@
     state.moves += 1;
     insertIntoTray(tile);
     playSound('pick');
+  }
+
+  function flushPendingPicks() {
+    while (pendingPicks.length && !state.locked && !['won', 'lost'].includes(state.status)) {
+      selectBoardTile(pendingPicks.shift());
+    }
+    if (['won', 'lost'].includes(state.status)) pendingPicks.length = 0;
   }
 
   function selectHeldTile(id) {
@@ -409,7 +478,8 @@
       playSound('match');
       checkEnd();
       renderAll();
-    }, 320);
+      flushPendingPicks();
+    }, 220);
   }
 
   function checkEnd() {

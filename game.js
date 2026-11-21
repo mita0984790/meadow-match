@@ -18,15 +18,21 @@
     { id: 'flower', name: '小花' },
     { id: 'milk', name: '牛奶' },
     { id: 'yarn', name: '毛线球' },
-    { id: 'corn', name: '玉米' }
+    { id: 'corn', name: '玉米' },
+    { id: 'strawberry', name: '草莓' },
+    { id: 'mushroom', name: '蘑菇' },
+    { id: 'pumpkin', name: '南瓜' },
+    { id: 'grape', name: '葡萄' }
   ];
+  const EASY_TYPE_COUNT = 8;
+  const inventory = { undo: 3, shuffle: 2, extract: 2 };
 
   const $ = (id) => document.getElementById(id);
   const dom = {
     board: $('board'), tray: $('tray'), holdingRow: $('holdingRow'), holdingSlots: $('holdingSlots'),
     levelTitle: $('levelTitle'), sideLevel: $('sideLevel'), score: $('scoreValue'), time: $('timeValue'),
     progressText: $('progressText'), progressBar: $('progressBar'), moveText: $('moveText'),
-    trayCount: $('trayCount'), cleared: $('clearedValue'), progressRing: $('progressRing'),
+    trayCount: $('trayCount'), cleared: $('clearedValue'), clearedTotal: $('clearedTotal'), progressRing: $('progressRing'),
     progressHint: $('progressHint'), boardCaption: $('boardCaption'), tipText: $('tipText'),
     bestScore: $('bestScore'), winCount: $('winCount'),
     undo: $('undoButton'), shuffle: $('shuffleButton'), extract: $('extractButton'),
@@ -65,6 +71,25 @@
     }
   }
 
+  // 合并仓库中的世界最佳记录，本地成绩更高时以本地为准。
+  async function loadWorldRecord() {
+    try {
+      const response = await fetch('records.json', { cache: 'no-store' });
+      if (!response.ok) return;
+      const saved = await response.json();
+      const best = Number(saved.best) || 0;
+      const wins = Number(saved.wins) || 0;
+      if (best > records.best || wins > records.wins) {
+        records.best = Math.max(records.best, best);
+        records.wins = Math.max(records.wins, wins);
+        saveRecords();
+        renderHud();
+      }
+    } catch {
+      // 离线或直接用文件打开时，仅使用本地记录。
+    }
+  }
+
   function loadSoundSetting() {
     try {
       return localStorage.getItem(SOUND_KEY) !== 'off';
@@ -82,19 +107,24 @@
     return result;
   }
 
-  function createLayout() {
+  function createLayout(level = 1) {
     const positions = [];
-    const addGrid = (layer, xs, ys) => {
+    const addGrid = (layer, xs, ys, dx = 0, dy = 0) => {
       ys.forEach((y) => xs.forEach((x) => positions.push({
         id: `tile-${positions.length}`,
-        x, y, layer, type: null, removed: false
+        x: x + dx, y: y + dy, layer, type: null, removed: false
       })));
     };
+    const addSet = (baseLayer, dx, dy) => {
+      addGrid(baseLayer, [84, 156, 228, 300, 372, 444], [70, 148, 226, 304, 382], dx, dy);
+      addGrid(baseLayer + 1, [120, 192, 264, 336, 408], [109, 187, 265, 343], dx, dy);
+      addGrid(baseLayer + 2, [156, 228, 300, 372], [148, 226, 304], dx, dy);
+      addGrid(baseLayer + 3, [228, 300], [187, 265], dx, dy);
+    };
 
-    addGrid(0, [84, 156, 228, 300, 372, 444], [70, 148, 226, 304, 382]);
-    addGrid(1, [120, 192, 264, 336, 408], [109, 187, 265, 343]);
-    addGrid(2, [156, 228, 300, 372], [148, 226, 304]);
-    addGrid(3, [228, 300], [187, 265]);
+    addSet(0, 0, 0);
+    // 每 3 关叠上第二套错位牌，纸牌数量翻倍、层数更多。
+    if (level % 3 === 0) addSet(4, 36, 39);
     return positions;
   }
 
@@ -103,25 +133,35 @@
       Math.abs(a.y - b.y) < TILE_HEIGHT - 10;
   }
 
-  function isCoveredInSet(tile, remaining, tileMap) {
-    return [...remaining].some((id) => {
-      const other = tileMap.get(id);
-      return other.layer > tile.layer && overlaps(tile, other);
+  // 预先缓存每张牌被哪些上层牌压住，避免每次查询都全量扫描。
+  function buildCoverMap(tiles) {
+    const coverMap = new Map(tiles.map((tile) => [tile.id, []]));
+    tiles.forEach((tile) => {
+      tiles.forEach((other) => {
+        if (other.layer > tile.layer && overlaps(tile, other)) {
+          coverMap.get(tile.id).push(other.id);
+        }
+      });
     });
+    return coverMap;
   }
 
-  function assignSolvableTypes(tiles) {
-    const tileMap = new Map(tiles.map((tile) => [tile.id, tile]));
+  function typePoolFor(level) {
+    return level % 3 === 0 ? TYPES : TYPES.slice(0, EASY_TYPE_COUNT);
+  }
+
+  function assignSolvableTypes(tiles, tileMap, coverMap, pool) {
     let groups = null;
+    const attempts = tiles.length > 100 ? 40 : 60;
 
     // 先模拟一条可完成的取牌路径，再把相同图案发给路径上的每组三张牌。
-    for (let attempt = 0; attempt < 60 && !groups; attempt += 1) {
+    for (let attempt = 0; attempt < attempts && !groups; attempt += 1) {
       const remaining = new Set(tiles.map((tile) => tile.id));
       const candidateGroups = [];
 
       while (remaining.size) {
         const available = shuffled([...remaining].filter((id) =>
-          !isCoveredInSet(tileMap.get(id), remaining, tileMap)
+          !coverMap.get(id).some((coverId) => remaining.has(coverId))
         ));
         if (available.length < 3) break;
 
@@ -135,23 +175,28 @@
 
     if (!groups) throw new Error('无法生成可解牌局，请刷新重试。');
 
-    const groupTypes = shuffled(groups.map((_, index) => TYPES[index % TYPES.length].id));
+    const groupTypes = shuffled(groups.map((_, index) => pool[index % pool.length].id));
     groups.forEach((group, index) => {
       group.forEach((id) => { tileMap.get(id).type = groupTypes[index]; });
     });
   }
 
   function createState(level = 1) {
-    const tiles = createLayout();
-    assignSolvableTypes(tiles);
+    const tiles = createLayout(level);
+    const tileMap = new Map(tiles.map((tile) => [tile.id, tile]));
+    const coverMap = buildCoverMap(tiles);
+    assignSolvableTypes(tiles, tileMap, coverMap, typePoolFor(level));
     return {
       roundId: state ? state.roundId + 1 : 1,
       level,
+      hard: level % 3 === 0,
       tiles,
+      tileMap,
+      coverMap,
       tray: [],
       held: [],
       history: [],
-      tools: { undo: 3, shuffle: 2, extract: 2 },
+      tools: inventory,
       score: 0,
       moves: 0,
       combo: 0,
@@ -178,9 +223,7 @@
   }
 
   function isBlocked(tile) {
-    return state.tiles.some((other) =>
-      !other.removed && other.layer > tile.layer && overlaps(tile, other)
-    );
+    return state.coverMap.get(tile.id).some((id) => !state.tileMap.get(id).removed);
   }
 
   function remainingTiles() {
@@ -317,7 +360,9 @@
     const percent = cleared / state.tiles.length * 100;
     const traySize = state.tray.length;
 
-    dom.levelTitle.textContent = `青草坡 · 第 ${state.level} 关`;
+    dom.levelTitle.textContent = state.hard
+      ? `青草坡 · 第 ${state.level} 关 · 双倍挑战`
+      : `青草坡 · 第 ${state.level} 关`;
     dom.sideLevel.textContent = state.level;
     dom.score.textContent = state.score.toLocaleString('zh-CN');
     dom.progressText.textContent = `剩余 ${remaining} 张纸牌`;
@@ -326,6 +371,7 @@
     dom.trayCount.textContent = `${traySize} / ${TRAY_CAPACITY}`;
     dom.trayCount.classList.toggle('is-danger', traySize >= 5);
     dom.cleared.textContent = cleared;
+    dom.clearedTotal.textContent = state.tiles.length;
     dom.progressRing.style.setProperty('--progress', `${percent * 3.6}deg`);
     dom.bestScore.textContent = records.best ? records.best.toLocaleString('zh-CN') : '—';
     dom.winCount.textContent = records.wins;
@@ -348,7 +394,7 @@
     if (traySize >= 5) {
       dom.tipText.textContent = '卡槽快满了，先凑对已有图案，或使用撤销和移出道具腾出空间。';
       dom.progressHint.textContent = '注意卡槽，别让不同图案占满位置';
-    } else if (cleared >= 44) {
+    } else if (cleared / state.tiles.length >= 0.67) {
       dom.tipText.textContent = '已经清理大半，留意每一层的位置，避免留下无法配对的孤牌。';
       dom.progressHint.textContent = '胜利在望，保持现在的节奏';
     } else {
@@ -686,4 +732,5 @@
 
   updateSoundButton();
   newGame();
+  loadWorldRecord();
 })();

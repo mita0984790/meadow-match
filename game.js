@@ -29,8 +29,8 @@
 
   const $ = (id) => document.getElementById(id);
   const dom = {
-    board: $('board'), tray: $('tray'), holdingRow: $('holdingRow'), holdingSlots: $('holdingSlots'),
-    levelTitle: $('levelTitle'), sideLevel: $('sideLevel'), score: $('scoreValue'), time: $('timeValue'),
+    panel: $('gamePanel'), board: $('board'), tray: $('tray'), holdingRow: $('holdingRow'), holdingSlots: $('holdingSlots'),
+    levelTitle: $('levelTitle'), hardBadge: $('hardBadge'), sideLevel: $('sideLevel'), score: $('scoreValue'), time: $('timeValue'),
     progressText: $('progressText'), progressBar: $('progressBar'), moveText: $('moveText'),
     trayCount: $('trayCount'), cleared: $('clearedValue'), clearedTotal: $('clearedTotal'), progressRing: $('progressRing'),
     progressHint: $('progressHint'), boardCaption: $('boardCaption'), tipText: $('tipText'),
@@ -47,6 +47,9 @@
   let records = loadRecords();
   let soundEnabled = loadSoundSetting();
   let audioContext = null;
+  let masterGain = null;
+  let musicGain = null;
+  const music = { playing: false, timer: 0, nextTime: 0, step: 0 };
   let toastTimer = null;
   let modalShouldResume = false;
   let previousFocus = null;
@@ -360,9 +363,9 @@
     const percent = cleared / state.tiles.length * 100;
     const traySize = state.tray.length;
 
-    dom.levelTitle.textContent = state.hard
-      ? `青草坡 · 第 ${state.level} 关 · 双倍挑战`
-      : `青草坡 · 第 ${state.level} 关`;
+    dom.levelTitle.textContent = `青草坡 · 第 ${state.level} 关`;
+    dom.hardBadge.hidden = !state.hard;
+    dom.panel.classList.toggle('is-hard', state.hard);
     dom.sideLevel.textContent = state.level;
     dom.score.textContent = state.score.toLocaleString('zh-CN');
     dom.progressText.textContent = `剩余 ${remaining} 张纸牌`;
@@ -379,6 +382,9 @@
     dom.undoCount.textContent = state.tools.undo;
     dom.shuffleCount.textContent = state.tools.shuffle;
     dom.extractCount.textContent = state.tools.extract;
+    dom.undo.title = state.tools.undo > 0 ? `撤销一步（剩余 ${state.tools.undo} 次）` : '撤销次数已用完';
+    dom.shuffle.title = state.tools.shuffle > 0 ? `洗牌（剩余 ${state.tools.shuffle} 次）` : '洗牌次数已用完';
+    dom.extract.title = state.tools.extract > 0 ? `移出纸牌（剩余 ${state.tools.extract} 次）` : '移出次数已用完';
     dom.undo.disabled = state.locked || !state.history.length || state.tools.undo <= 0 || state.status === 'won';
     dom.shuffle.disabled = state.locked || remaining < 2 || state.tools.shuffle <= 0 || ['won', 'lost'].includes(state.status);
     dom.extract.disabled = state.locked || !traySize || state.held.length >= HOLDING_CAPACITY || state.tools.extract <= 0 || state.status === 'won';
@@ -624,7 +630,152 @@
 
   function updateSoundButton() {
     dom.soundIcon.setAttribute('href', soundEnabled ? '#icon-volume' : '#icon-mute');
-    dom.soundButton.setAttribute('aria-label', soundEnabled ? '关闭声音' : '打开声音');
+    dom.soundButton.setAttribute('aria-label', soundEnabled ? '关闭声音（音效与背景音乐）' : '打开声音（音效与背景音乐）');
+  }
+
+  // 首次交互时创建音频上下文，并接入音量总线，供音效和背景音乐共用。
+  function ensureAudio() {
+    try {
+      if (!audioContext) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return null;
+        audioContext = new AudioContext();
+        masterGain = audioContext.createGain();
+        masterGain.gain.value = .9;
+        masterGain.connect(audioContext.destination);
+        musicGain = audioContext.createGain();
+        musicGain.gain.value = .0001;
+        const softener = audioContext.createBiquadFilter();
+        softener.type = 'lowpass';
+        softener.frequency.value = 2400;
+        musicGain.connect(softener);
+        softener.connect(masterGain);
+      }
+      if (audioContext.state === 'suspended') audioContext.resume();
+      return audioContext;
+    } catch {
+      return null;
+    }
+  }
+
+  function playTone(frequency, {
+    type = 'sine', delay = 0, duration = .2, gain = .05, attack = .012, bus = null
+  } = {}) {
+    if (!audioContext) return;
+    const start = audioContext.currentTime + delay;
+    const oscillator = audioContext.createOscillator();
+    const amp = audioContext.createGain();
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, start);
+    amp.gain.setValueAtTime(.0001, start);
+    amp.gain.exponentialRampToValueAtTime(gain, start + attack);
+    amp.gain.exponentialRampToValueAtTime(.0001, start + duration);
+    oscillator.connect(amp);
+    amp.connect(bus || masterGain);
+    oscillator.start(start);
+    oscillator.stop(start + duration + .03);
+  }
+
+  function playSound(kind) {
+    if (!soundEnabled || !ensureAudio()) return;
+    const chords = {
+      // 轻快的木琴单音，选中纸牌时使用。
+      pick: () => {
+        playTone(659.25, { duration: .17, gain: .05, attack: .006 });
+        playTone(987.77, { duration: .12, gain: .016, attack: .006 });
+      },
+      // 三连音上行的柔和风铃，消除成功时使用。
+      match: () => {
+        [523.25, 659.25, 783.99].forEach((f, i) =>
+          playTone(f, { type: 'triangle', delay: i * .075, duration: .3, gain: .04, attack: .008 }));
+        playTone(1046.5, { delay: .16, duration: .34, gain: .018 });
+      },
+      // 低频轻触，道具生效时使用。
+      tool: () => {
+        playTone(392, { duration: .22, gain: .038 });
+        playTone(587.33, { delay: .07, duration: .24, gain: .026 });
+      },
+      lose: () => {
+        [392, 329.63, 261.63].forEach((f, i) =>
+          playTone(f, { delay: i * .14, duration: .32, gain: .04 }));
+      },
+      win: () => {
+        [523.25, 587.33, 659.25, 783.99, 880].forEach((f, i) =>
+          playTone(f, { type: 'triangle', delay: i * .12, duration: .38, gain: .038 }));
+        playTone(1046.5, { delay: .62, duration: .7, gain: .026, attack: .06 });
+      }
+    };
+    (chords[kind] || (() => {}))();
+  }
+
+  // 背景音乐：四段温和的和弦循环，配合缓慢的琶音，音量很低。
+  const MUSIC_STEP = .56;
+  const MUSIC_STEPS_PER_CHORD = 8;
+  const MUSIC_LOOKAHEAD = 1;
+  const MUSIC_CHORDS = [
+    [53, 57, 60, 64], // Fmaj7
+    [55, 59, 62, 64], // G6
+    [52, 55, 59, 62], // Em7
+    [57, 60, 64, 67]  // Am7
+  ];
+  const MUSIC_PATTERN = [0, 1, 2, 3, 2, 1, 3, 2];
+  const midiToFrequency = (note) => 440 * Math.pow(2, (note - 69) / 12);
+
+  function scheduleMusicStep(step, at) {
+    const chord = MUSIC_CHORDS[Math.floor(step / MUSIC_STEPS_PER_CHORD) % MUSIC_CHORDS.length];
+    const index = step % MUSIC_STEPS_PER_CHORD;
+    const chordLength = MUSIC_STEP * MUSIC_STEPS_PER_CHORD;
+
+    if (index === 0) {
+      const delay = at - audioContext.currentTime;
+      // 低音铺底与柔和的长音和弦，让循环更连贯。
+      playTone(midiToFrequency(chord[0] - 12), { delay, duration: chordLength * .95, gain: .05, attack: .9, bus: musicGain });
+      chord.forEach((note) =>
+        playTone(midiToFrequency(note), { type: 'triangle', delay, duration: chordLength * .82, gain: .011, attack: 1.1, bus: musicGain }));
+    }
+
+    const note = chord[MUSIC_PATTERN[index]] + 12;
+    playTone(midiToFrequency(note), {
+      delay: at - audioContext.currentTime,
+      duration: MUSIC_STEP * 1.7,
+      gain: .034,
+      attack: .02,
+      bus: musicGain
+    });
+  }
+
+  function pumpMusic() {
+    if (!music.playing || !audioContext) return;
+    while (music.nextTime < audioContext.currentTime + MUSIC_LOOKAHEAD) {
+      scheduleMusicStep(music.step, music.nextTime);
+      music.step += 1;
+      music.nextTime += MUSIC_STEP;
+    }
+  }
+
+  function startMusic() {
+    if (!soundEnabled || music.playing || !ensureAudio()) return;
+    music.playing = true;
+    music.step = 0;
+    music.nextTime = audioContext.currentTime + .2;
+    const now = audioContext.currentTime;
+    musicGain.gain.cancelScheduledValues(now);
+    musicGain.gain.setValueAtTime(Math.max(musicGain.gain.value, .0001), now);
+    musicGain.gain.linearRampToValueAtTime(.55, now + 2.4);
+    music.timer = setInterval(pumpMusic, 260);
+    pumpMusic();
+  }
+
+  function stopMusic() {
+    if (!music.playing) return;
+    music.playing = false;
+    clearInterval(music.timer);
+    music.timer = 0;
+    if (!audioContext || !musicGain) return;
+    const now = audioContext.currentTime;
+    musicGain.gain.cancelScheduledValues(now);
+    musicGain.gain.setValueAtTime(musicGain.gain.value, now);
+    musicGain.gain.linearRampToValueAtTime(.0001, now + .7);
   }
 
   function toggleSound() {
@@ -635,40 +786,21 @@
       // 声音设置保存失败不影响切换。
     }
     updateSoundButton();
-    if (soundEnabled) playSound('tool');
+    if (soundEnabled) {
+      ensureAudio();
+      startMusic();
+      playSound('tool');
+    } else {
+      stopMusic();
+    }
   }
 
-  function playSound(kind) {
+  // 浏览器要求先有用户操作才能播放声音，首次点击或按键时开启背景音乐。
+  function unlockAudio(event) {
+    if (event?.target?.closest?.('#soundButton')) return;
     if (!soundEnabled) return;
-    const AudioContext = window.AudioContext || window.webkitAudioContext;
-    if (!AudioContext) return;
-    try {
-      audioContext ||= new AudioContext();
-      if (audioContext.state === 'suspended') audioContext.resume();
-      const notes = {
-        pick: [[440, 0, .055]],
-        match: [[620, 0, .09], [820, .08, .12]],
-        tool: [[380, 0, .07], [510, .06, .08]],
-        lose: [[300, 0, .13], [220, .12, .2]],
-        win: [[523, 0, .12], [659, .12, .12], [784, .24, .22]]
-      };
-      (notes[kind] || []).forEach(([frequency, delay, duration]) => {
-        const oscillator = audioContext.createOscillator();
-        const gain = audioContext.createGain();
-        const start = audioContext.currentTime + delay;
-        oscillator.type = 'sine';
-        oscillator.frequency.value = frequency;
-        gain.gain.setValueAtTime(.0001, start);
-        gain.gain.exponentialRampToValueAtTime(.055, start + .012);
-        gain.gain.exponentialRampToValueAtTime(.0001, start + duration);
-        oscillator.connect(gain);
-        gain.connect(audioContext.destination);
-        oscillator.start(start);
-        oscillator.stop(start + duration + .02);
-      });
-    } catch {
-      // 浏览器限制音频时静默运行。
-    }
+    ensureAudio();
+    startMusic();
   }
 
   function launchConfetti() {
@@ -728,6 +860,13 @@
   dom.helpModal.querySelector('[data-close-modal]').addEventListener('click', closeHelp);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !dom.helpModal.hidden) closeHelp();
+  });
+  // 首次交互后再启动音频，符合浏览器的自动播放限制。
+  ['pointerdown', 'keydown'].forEach((name) => document.addEventListener(name, unlockAudio, { once: true }));
+  document.addEventListener('visibilitychange', () => {
+    if (!audioContext) return;
+    if (document.hidden) audioContext.suspend();
+    else if (soundEnabled) audioContext.resume();
   });
 
   updateSoundButton();

@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#315c46">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='12' fill='%23315c46'/%3E%3Ccircle cx='24' cy='26' r='11' fill='%23fff9e9'/%3E%3Ccircle cx='20' cy='25' r='1.7' fill='%23315c46'/%3E%3Ccircle cx='28' cy='25' r='1.7' fill='%23315c46'/%3E%3Cpath d='M21 30c2 2 4 2 6 0' stroke='%239b684c' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
   <meta name="description" content="咩咩牧场是一款轻松有趣的免费网页消除游戏。点击叠层纸牌，将三个相同图案放进收集槽即可消除，无需下载，打开即玩。">
   <meta name="keywords" content="消除游戏,网页小游戏,休闲游戏,羊了个羊类似游戏,咩咩牧场">
   <meta property="og:title" content="咩咩牧场｜轻松的三消叠层游戏">
@@ -58,7 +59,7 @@
       <span class="brand-copy"><strong>咩咩牧场</strong><small>MEADOW MATCH</small></span>
     </a>
     <div class="header-actions">
-      <button class="icon-button" id="soundButton" type="button" aria-label="关闭声音" title="声音">
+      <button class="icon-button" id="soundButton" type="button" aria-label="关闭声音（音效与背景音乐）" title="音效与背景音乐">
         <svg class="icon"><use id="soundIcon" href="#icon-volume"></use></svg>
       </button>
       <button class="help-button" id="helpButton" type="button">
@@ -68,10 +69,10 @@
   </header>
 
   <main class="game-shell">
-    <section class="game-panel" aria-label="咩咩牧场游戏区">
+    <section class="game-panel" id="gamePanel" aria-label="咩咩牧场游戏区">
       <div class="game-heading">
         <div class="level-copy">
-          <div class="eyebrow"><span class="live-dot"></span>每日轻松挑战</div>
+          <div class="eyebrow"><span class="live-dot"></span>每日轻松挑战<span class="hard-badge" id="hardBadge" hidden>双倍挑战</span></div>
           <h1 id="levelTitle">青草坡 · 第 1 关</h1>
         </div>
         <div class="heading-actions">
@@ -137,6 +138,7 @@
           <b id="extractCount">2</b>
         </button>
       </div>
+      <p class="tools-note">道具跨关共享，刷新页面后才会补满</p>
     </section>
 
     <aside class="sidebar" aria-label="挑战信息">
@@ -152,7 +154,7 @@
         <div class="side-card-heading"><span>牧场记录</span><svg class="icon"><use href="#icon-star"></use></svg></div>
         <div class="record-row"><span>世界最佳</span><strong id="bestScore">—</strong></div>
         <div class="record-row"><span>成功通关</span><strong><b id="winCount">0</b> 次</strong></div>
-        <small>世界最佳取自仓库 records.json，本机成绩自动保留</small>
+        <small>世界最佳来自仓库 records.json，本机成绩自动保留</small>
       </section>
 
       <section class="side-card tip-card">

@@ -9,6 +9,7 @@
   const HOLDING_CAPACITY = 3;
   const STORAGE_KEY = 'meadow-match-records-v1';
   const SOUND_KEY = 'meadow-match-sound-v1';
+  const SESSION_KEY = 'meadow-match-session-v1';
 
   const TYPES = [
     { id: 'carrot', name: '胡萝卜' },
@@ -51,6 +52,7 @@
   let musicGain = null;
   const music = { playing: false, timer: 0, nextTime: 0, step: 0 };
   let toastTimer = null;
+  let sessionTimer = null;
   let modalShouldResume = false;
   let previousFocus = null;
   const boardNodes = new Map();
@@ -71,6 +73,92 @@
       localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
     } catch {
       // 隐私模式下无法保存时，不影响本局游戏。
+    }
+  }
+
+  function sanitizeTools(tools) {
+    const count = (value, fallback) => {
+      const num = Number(value);
+      return Number.isFinite(num) ? Math.max(0, Math.min(99, num)) : fallback;
+    };
+    return {
+      undo: count(tools?.undo, inventory.undo),
+      shuffle: count(tools?.shuffle, inventory.shuffle),
+      extract: count(tools?.extract, inventory.extract)
+    };
+  }
+
+  function saveSession() {
+    // 消除动画进行中状态不一致，跳过本次写入，保留上一份完整快照。
+    if (!state || state.locked) return;
+    try {
+      localStorage.setItem(SESSION_KEY, JSON.stringify({
+        v: 1,
+        level: state.level,
+        status: state.status,
+        tiles: state.tiles.map(({ id, x, y, layer, type, removed }) => ({ id, x, y, layer, type, removed })),
+        tray: [...state.tray],
+        held: [...state.held],
+        history: state.history.slice(-10),
+        tools: { ...inventory },
+        score: state.score,
+        moves: state.moves,
+        combo: state.combo,
+        elapsed: getElapsed()
+      }));
+    } catch {
+      // 存储不可用时忽略，本局仍可正常游玩。
+    }
+  }
+
+  // 渲染可能连续触发，合并写入避免频繁操作 localStorage。
+  function scheduleSave() {
+    clearTimeout(sessionTimer);
+    sessionTimer = setTimeout(saveSession, 400);
+  }
+
+  // 恢复上次未打完的牌局；数据缺失或版本不符时返回 false。
+  function restoreSession() {
+    let saved;
+    try {
+      saved = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+    } catch {
+      return false;
+    }
+    if (!saved || saved.v !== 1 || !Array.isArray(saved.tiles) || !saved.tiles.length) return false;
+
+    try {
+      const tiles = saved.tiles.map((tile) => ({ ...tile, removed: Boolean(tile.removed) }));
+      const tileMap = new Map(tiles.map((tile) => [tile.id, tile]));
+      const level = Number(saved.level) || 1;
+      Object.assign(inventory, sanitizeTools(saved.tools));
+      state = {
+        roundId: 1,
+        level,
+        hard: level % 3 === 0,
+        tiles,
+        tileMap,
+        coverMap: buildCoverMap(tiles),
+        tray: Array.isArray(saved.tray) ? saved.tray.filter((id) => tileMap.has(id)) : [],
+        held: Array.isArray(saved.held) ? saved.held.filter((id) => tileMap.has(id)) : [],
+        history: Array.isArray(saved.history) ? saved.history : [],
+        tools: inventory,
+        score: Number(saved.score) || 0,
+        moves: Number(saved.moves) || 0,
+        combo: Number(saved.combo) || 0,
+        matching: [],
+        locked: false,
+        status: ['ready', 'playing', 'won', 'lost'].includes(saved.status) ? saved.status : 'ready',
+        elapsed: Number(saved.elapsed) || 0,
+        startedAt: 0,
+        timer: null
+      };
+      renderAll();
+      updateTime();
+      showToast('已恢复上次进度');
+      return true;
+    } catch {
+      return false;
     }
   }
 
@@ -436,6 +524,7 @@
     renderHeld();
     renderHud();
     renderOverlay();
+    scheduleSave();
   }
 
   function pushHistory() {
@@ -864,12 +953,14 @@
   // 首次交互后再启动音频，符合浏览器的自动播放限制。
   ['pointerdown', 'keydown'].forEach((name) => document.addEventListener(name, unlockAudio, { once: true }));
   document.addEventListener('visibilitychange', () => {
+    if (document.hidden) saveSession();
     if (!audioContext) return;
     if (document.hidden) audioContext.suspend();
     else if (soundEnabled) audioContext.resume();
   });
+  window.addEventListener('beforeunload', saveSession);
 
   updateSoundButton();
-  newGame();
+  if (!restoreSession()) newGame();
   loadWorldRecord();
 })();

@@ -162,39 +162,8 @@
     }
   }
 
-  // GitHub Contents API —— 把 records.json 当"数据库"读写。
-  const GH_API = 'https://api.github.com';
-  const GH_REPO = 'mita0984790/meadow-match';
-  const GH_TOKEN = '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';
-  const GH_RECORDS_PATH = 'records.json';
-
-  async function ghGetRecords() {
-    const res = await fetch(`${GH_API}/repos/${GH_REPO}/contents/${GH_RECORDS_PATH}`, {
-      headers: { Authorization: `token ${GH_TOKEN}`, Accept: 'application/vnd.github+json' }
-    });
-    if (!res.ok) throw new Error(`gh get ${res.status}`);
-    const data = await res.json();
-    const json = JSON.parse(atob(data.content.replace(/\n/g, '')));
-    return { sha: data.sha, best: Number(json.best) || 0, wins: Number(json.wins) || 0 };
-  }
-
-  async function ghPutRecords(sha, best, wins) {
-    const json = JSON.stringify({ best, wins, updated: new Date().toISOString() }, null, 2);
-    const res = await fetch(`${GH_API}/repos/${GH_REPO}/contents/${GH_RECORDS_PATH}`, {
-      method: 'PUT',
-      headers: {
-        Authorization: `token ${GH_TOKEN}`,
-        Accept: 'application/vnd.github+json',
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        message: `update records: best=${best} wins=${wins}`,
-        content: btoa(json),
-        sha
-      })
-    });
-    if (!res.ok) throw new Error(`gh put ${res.status}`);
-  }
+  // 世界记录：只从公开的 records.json 读取合并，前端不持有任何写权限凭据。
+  const RECORDS_URL = 'records.json';
 
   // 合并云端与本地记录，两边取较大值。
   function mergeRecord(best, wins) {
@@ -206,35 +175,15 @@
     }
   }
 
-  // 启动时从 GitHub 读取最新世界最佳，失败则回退到仓库静态文件。
+  // 启动时读取公开的 records.json，失败则仅使用本地记录。
   async function loadWorldRecord() {
     try {
-      const remote = await ghGetRecords();
-      mergeRecord(remote.best, remote.wins);
+      const response = await fetch(`${RECORDS_URL}?t=${Date.now()}`, { cache: 'no-store' });
+      if (!response.ok) return;
+      const saved = await response.json();
+      mergeRecord(Number(saved.best) || 0, Number(saved.wins) || 0);
     } catch {
-      // GitHub API 不可达（离线 / 被墙），回退到仓库静态文件。
-      try {
-        const response = await fetch('records.json', { cache: 'no-store' });
-        if (!response.ok) return;
-        const saved = await response.json();
-        mergeRecord(Number(saved.best) || 0, Number(saved.wins) || 0);
-      } catch { /* 彻底离线，仅用本地记录。 */ }
-    }
-  }
-
-  // 通关时把成绩写回 GitHub，只有刷新了最高纪录才会真的写入；失败静默。
-  async function submitWorldRecord() {
-    try {
-      const remote = await ghGetRecords();
-      const shouldWrite = records.best > remote.best || records.wins > remote.wins;
-      if (!shouldWrite) return;
-      // 再比一次：避免本地与远端同时被刷新时覆盖掉更大值。
-      const nextBest = Math.max(remote.best, records.best);
-      const nextWins = Math.max(remote.wins, records.wins);
-      await ghPutRecords(remote.sha, nextBest, nextWins);
-      mergeRecord(nextBest, nextWins);
-    } catch {
-      // 云端不可达时保留本地成绩，等下次启动再合并。
+      // 离线时仅使用本地记录。
     }
   }
 
@@ -703,7 +652,6 @@
     }
     records.best = Math.max(records.best, state.score);
     saveRecords();
-    submitWorldRecord();
   }
 
   function resumeAfterTool() {

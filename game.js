@@ -162,30 +162,8 @@
     }
   }
 
-  // 世界记录：只从公开的 records.json 读取合并，前端不持有任何写权限凭据。
-  const RECORDS_URL = 'records.json';
+  // 成绩只保存在本机浏览器。
 
-  // 合并云端与本地记录，两边取较大值。
-  function mergeRecord(best, wins) {
-    if (best > records.best || wins > records.wins) {
-      records.best = Math.max(records.best, best);
-      records.wins = Math.max(records.wins, wins);
-      saveRecords();
-      renderHud();
-    }
-  }
-
-  // 启动时读取公开的 records.json，失败则仅使用本地记录。
-  async function loadWorldRecord() {
-    try {
-      const response = await fetch(`${RECORDS_URL}?t=${Date.now()}`, { cache: 'no-store' });
-      if (!response.ok) return;
-      const saved = await response.json();
-      mergeRecord(Number(saved.best) || 0, Number(saved.wins) || 0);
-    } catch {
-      // 离线时仅使用本地记录。
-    }
-  }
 
   function loadSoundSetting() {
     try {
@@ -244,7 +222,9 @@
   }
 
   function typePoolFor(level) {
-    return level % 3 === 0 ? TYPES : TYPES.slice(0, EASY_TYPE_COUNT);
+    // 前 3 关固定 8 种图案，之后每 2 关多 1 种，直到用满全部图案。
+    const grown = EASY_TYPE_COUNT + Math.max(0, Math.floor((level - 3) / 2));
+    return TYPES.slice(0, Math.min(TYPES.length, grown));
   }
 
   function assignSolvableTypes(tiles, tileMap, coverMap, pool) {
@@ -968,5 +948,4 @@
 
   updateSoundButton();
   if (!restoreSession()) newGame();
-  loadWorldRecord();
 })();
